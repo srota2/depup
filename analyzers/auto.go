@@ -1,0 +1,48 @@
+package analyzers
+
+import (
+	"fmt"
+	"os"
+	"path/filepath"
+	"sort"
+)
+
+// AutoAnalyze iterates through all registered analyzers, skipping those whose
+// lock file does not exist in dir, and returns the merged results sorted by
+// days descending.
+func AutoAnalyze(dir string) ([]DepAge, error) {
+	var merged []DepAge
+
+	// Sort analyzer names for deterministic ordering
+	names := make([]string, 0, len(Registry))
+	for name := range Registry {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+
+	for _, name := range names {
+		analyzer := Registry[name]
+		lockPath := filepath.Join(dir, analyzer.LockFileName())
+
+		if _, err := os.Stat(lockPath); err != nil {
+			// Lock file does not exist — skip this analyzer
+			continue
+		}
+
+		results, err := AnalyzeDeps(dir, analyzer)
+		if err != nil {
+			return nil, fmt.Errorf("analyzer %s failed: %w", name, err)
+		}
+		merged = append(merged, results...)
+	}
+
+	if len(merged) == 0 {
+		return nil, fmt.Errorf("no supported dependency files found in %s", dir)
+	}
+
+	sort.Slice(merged, func(i, j int) bool {
+		return merged[i].Days > merged[j].Days
+	})
+
+	return merged, nil
+}

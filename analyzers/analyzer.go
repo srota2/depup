@@ -12,10 +12,11 @@ import (
 	"github.com/go-git/go-git/v5/plumbing/object"
 )
 
-// DepAge holds a dependency name and the number of days since its last version change.
+// DepAge holds a dependency name, its current version, and the number of days since its last version change.
 type DepAge struct {
-	Name string `json:"name"`
-	Days int    `json:"days"`
+	Name    string `json:"name"`
+	Version string `json:"version"`
+	Days    int    `json:"days"`
 }
 
 // Analyzer defines the interface that each package manager must implement.
@@ -76,7 +77,7 @@ func AnalyzeDeps(dir string, analyzer Analyzer) ([]DepAge, error) {
 		} else {
 			days = 0
 		}
-		results = append(results, DepAge{Name: name, Days: days})
+		results = append(results, DepAge{Name: name, Version: currentDeps[name], Days: days})
 	}
 
 	sort.Slice(results, func(i, j int) bool {
