@@ -10,6 +10,8 @@ import (
 // AutoAnalyze iterates through all registered analyzers, skipping those whose
 // lock file does not exist in dir, and returns the merged results sorted by
 // days descending.
+// When both "yarn" and "npm" analyzers produce results, only yarn is kept
+// (yarn.lock is the authoritative lock file in yarn-based projects).
 func AutoAnalyze(dir string) ([]DepAge, error) {
 	var merged []DepAge
 
@@ -19,6 +21,9 @@ func AutoAnalyze(dir string) ([]DepAge, error) {
 		names = append(names, name)
 	}
 	sort.Strings(names)
+
+	// Collect results per analyzer so we can decide which to keep
+	resultsByName := make(map[string][]DepAge)
 
 	for _, name := range names {
 		analyzer := Registry[name]
@@ -33,7 +38,20 @@ func AutoAnalyze(dir string) ([]DepAge, error) {
 		if err != nil {
 			return nil, fmt.Errorf("analyzer %s failed: %w", name, err)
 		}
-		merged = append(merged, results...)
+		if len(results) > 0 {
+			resultsByName[name] = results
+		}
+	}
+
+	// If both yarn and npm produced results, prefer yarn
+	if _, hasYarn := resultsByName["yarn"]; hasYarn {
+		delete(resultsByName, "npm")
+	}
+
+	for _, name := range names {
+		if results, ok := resultsByName[name]; ok {
+			merged = append(merged, results...)
+		}
 	}
 
 	if len(merged) == 0 {
