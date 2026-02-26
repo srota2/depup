@@ -13,7 +13,7 @@ import (
 // When both "yarn" and "npm" analyzers produce results, only yarn is kept
 // (yarn.lock is the authoritative lock file in yarn-based projects).
 func AutoAnalyze(dir string) ([]DepAge, error) {
-	var merged []DepAge
+	var merged = make([]DepAge, 0)
 
 	// Sort analyzer names for deterministic ordering
 	names := make([]string, 0, len(Registry))
