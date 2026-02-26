@@ -15,6 +15,14 @@ func (y *YarnAnalyzer) LockFileName() string {
 	return "yarn.lock"
 }
 
+func (y *YarnAnalyzer) FallbackFileName() string {
+	return "package.json"
+}
+
+func (y *YarnAnalyzer) ParseFallbackDeps(data []byte) (map[string]string, error) {
+	return parsePackageJSON(data)
+}
+
 func (y *YarnAnalyzer) ParseDeps(data []byte) (map[string]string, error) {
 	deps := make(map[string]string)
 	lines := strings.Split(string(data), "\n")

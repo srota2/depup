@@ -28,6 +28,19 @@ type Analyzer interface {
 	ParseDeps(data []byte) (map[string]string, error)
 }
 
+// FallbackAnalyzer is an optional interface that analyzers can implement
+// to provide a fallback manifest file when the primary lock file is missing.
+type FallbackAnalyzer interface {
+	// FallbackFileName returns the name of the manifest file to use as fallback.
+	FallbackFileName() string
+
+	// ParseFallbackDeps extracts dependency name → version from the fallback file.
+	ParseFallbackDeps(data []byte) (map[string]string, error)
+}
+
+// depParser is a function that parses dependency data from file contents.
+type depParser func([]byte) (map[string]string, error)
+
 // Registry maps subcommand names to their Analyzer implementations.
 var Registry = map[string]Analyzer{}
 
@@ -47,21 +60,34 @@ func AnalyzeDeps(dir string, analyzer Analyzer) ([]DepAge, error) {
 	}
 
 	lockFile := analyzer.LockFileName()
+	parse := depParser(analyzer.ParseDeps)
 
-	// 2. Parse current lock file from the working tree
+	// 2. Parse current lock file from the working tree (with fallback)
 	lockPath := filepath.Join(dir, lockFile)
 	data, err := os.ReadFile(lockPath)
 	if err != nil {
-		return nil, fmt.Errorf("cannot read %s: %w", lockFile, err)
+		// Try fallback manifest file if available
+		if fb, ok := analyzer.(FallbackAnalyzer); ok {
+			fallbackFile := fb.FallbackFileName()
+			fallbackPath := filepath.Join(dir, fallbackFile)
+			data, err = os.ReadFile(fallbackPath)
+			if err != nil {
+				return nil, fmt.Errorf("cannot read %s or %s: %w", lockFile, fallbackFile, err)
+			}
+			lockFile = fallbackFile
+			parse = fb.ParseFallbackDeps
+		} else {
+			return nil, fmt.Errorf("cannot read %s: %w", lockFile, err)
+		}
 	}
 
-	currentDeps, err := analyzer.ParseDeps(data)
+	currentDeps, err := parse(data)
 	if err != nil {
 		return nil, fmt.Errorf("cannot parse %s: %w", lockFile, err)
 	}
 
 	// 3. Walk git log for lock file changes
-	lastChanged, oldestDate := findLastChanged(repo, lockFile, currentDeps, analyzer)
+	lastChanged, oldestDate := findLastChanged(repo, lockFile, currentDeps, parse)
 
 	// 4. Build result sorted by days descending
 	now := time.Now()
@@ -86,7 +112,7 @@ func AnalyzeDeps(dir string, analyzer Analyzer) ([]DepAge, error) {
 // findLastChanged walks git history and for each current dependency,
 // finds the most recent commit date where that dependency's version differs
 // from the current version.
-func findLastChanged(repo *git.Repository, lockFile string, currentDeps map[string]string, analyzer Analyzer) (map[string]time.Time, time.Time) {
+func findLastChanged(repo *git.Repository, lockFile string, currentDeps map[string]string, parse depParser) (map[string]time.Time, time.Time) {
 	result := make(map[string]time.Time)
 	resolved := make(map[string]bool)
 	var oldestDate time.Time
@@ -114,7 +140,7 @@ func findLastChanged(repo *git.Repository, lockFile string, currentDeps map[stri
 			return fmt.Errorf("done")
 		}
 
-		commitDeps, err := parseDepsFromCommit(c, lockFile, analyzer)
+		commitDeps, err := parseDepsFromCommit(c, lockFile, parse)
 		if err != nil {
 			return nil
 		}
@@ -163,7 +189,7 @@ func findLastChanged(repo *git.Repository, lockFile string, currentDeps map[stri
 }
 
 // parseDepsFromCommit reads and parses the lock file from a specific commit.
-func parseDepsFromCommit(c *object.Commit, lockFile string, analyzer Analyzer) (map[string]string, error) {
+func parseDepsFromCommit(c *object.Commit, lockFile string, parse depParser) (map[string]string, error) {
 	tree, err := c.Tree()
 	if err != nil {
 		return nil, err
@@ -179,7 +205,7 @@ func parseDepsFromCommit(c *object.Commit, lockFile string, analyzer Analyzer) (
 		return nil, err
 	}
 
-	return analyzer.ParseDeps([]byte(contents))
+	return parse([]byte(contents))
 }
 
 func stringPtr(s string) *string {

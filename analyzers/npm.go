@@ -13,6 +13,14 @@ func (n *NpmAnalyzer) LockFileName() string {
 	return "package-lock.json"
 }
 
+func (n *NpmAnalyzer) FallbackFileName() string {
+	return "package.json"
+}
+
+func (n *NpmAnalyzer) ParseFallbackDeps(data []byte) (map[string]string, error) {
+	return parsePackageJSON(data)
+}
+
 // packageLockJSON represents the top-level structure of package-lock.json (v2/v3).
 type packageLockJSON struct {
 	Packages map[string]struct {
@@ -76,4 +84,33 @@ func extractPkgName(path string) string {
 		return ""
 	}
 	return name
+}
+
+// packageJSON represents the top-level structure of package.json.
+type packageJSON struct {
+	Dependencies    map[string]string `json:"dependencies"`
+	DevDependencies map[string]string `json:"devDependencies"`
+}
+
+// parsePackageJSON parses a package.json file and extracts dependencies.
+// Used as fallback by both npm and yarn analyzers.
+func parsePackageJSON(data []byte) (map[string]string, error) {
+	var pkg packageJSON
+	if err := json.Unmarshal(data, &pkg); err != nil {
+		return nil, err
+	}
+
+	deps := make(map[string]string)
+	for name, version := range pkg.Dependencies {
+		if name != "" && version != "" {
+			deps[name] = version
+		}
+	}
+	for name, version := range pkg.DevDependencies {
+		if name != "" && version != "" {
+			deps[name] = version
+		}
+	}
+
+	return deps, nil
 }

@@ -30,8 +30,15 @@ func AutoAnalyze(dir string) ([]DepAge, error) {
 		lockPath := filepath.Join(dir, analyzer.LockFileName())
 
 		if _, err := os.Stat(lockPath); err != nil {
-			// Lock file does not exist — skip this analyzer
-			continue
+			// Lock file does not exist — check for fallback manifest file
+			if fb, ok := analyzer.(FallbackAnalyzer); ok {
+				fbPath := filepath.Join(dir, fb.FallbackFileName())
+				if _, err := os.Stat(fbPath); err != nil {
+					continue // neither lock nor fallback exists
+				}
+			} else {
+				continue
+			}
 		}
 
 		results, err := AnalyzeDeps(dir, analyzer)
