@@ -61,7 +61,7 @@ func AnalyzeDeps(dir string, analyzer Analyzer) ([]DepAge, error) {
 	}
 
 	// 3. Walk git log for lock file changes
-	lastChanged := findLastChanged(repo, lockFile, currentDeps, analyzer)
+	lastChanged, oldestDate := findLastChanged(repo, lockFile, currentDeps, analyzer)
 
 	// 4. Build result sorted by days descending
 	now := time.Now()
@@ -70,8 +70,8 @@ func AnalyzeDeps(dir string, analyzer Analyzer) ([]DepAge, error) {
 		var days int
 		if t, ok := lastChanged[name]; ok {
 			days = int(math.Floor(now.Sub(t).Hours() / 24))
-		} else {
-			days = 0
+		} else if !oldestDate.IsZero() {
+			days = int(math.Floor(now.Sub(oldestDate).Hours() / 24))
 		}
 		results = append(results, DepAge{Name: name, Version: currentDeps[name], Days: days})
 	}
@@ -86,13 +86,14 @@ func AnalyzeDeps(dir string, analyzer Analyzer) ([]DepAge, error) {
 // findLastChanged walks git history and for each current dependency,
 // finds the most recent commit date where that dependency's version differs
 // from the current version.
-func findLastChanged(repo *git.Repository, lockFile string, currentDeps map[string]string, analyzer Analyzer) map[string]time.Time {
+func findLastChanged(repo *git.Repository, lockFile string, currentDeps map[string]string, analyzer Analyzer) (map[string]time.Time, time.Time) {
 	result := make(map[string]time.Time)
 	resolved := make(map[string]bool)
+	var oldestDate time.Time
 
 	head, err := repo.Head()
 	if err != nil {
-		return result
+		return result, oldestDate
 	}
 
 	logIter, err := repo.Log(&git.LogOptions{
@@ -100,7 +101,7 @@ func findLastChanged(repo *git.Repository, lockFile string, currentDeps map[stri
 		FileName: stringPtr(lockFile),
 	})
 	if err != nil {
-		return result
+		return result, oldestDate
 	}
 	defer logIter.Close()
 
@@ -142,6 +143,7 @@ func findLastChanged(repo *git.Repository, lockFile string, currentDeps map[stri
 
 		prevDeps = commitDeps
 		prevDate = c.Author.When
+		oldestDate = c.Author.When
 		return nil
 	})
 
@@ -157,7 +159,7 @@ func findLastChanged(repo *git.Repository, lockFile string, currentDeps map[stri
 		}
 	}
 
-	return result
+	return result, oldestDate
 }
 
 // parseDepsFromCommit reads and parses the lock file from a specific commit.
