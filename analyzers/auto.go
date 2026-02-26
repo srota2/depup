@@ -54,10 +54,6 @@ func AutoAnalyze(dir string) ([]DepAge, error) {
 		}
 	}
 
-	if len(merged) == 0 {
-		return nil, fmt.Errorf("no supported dependency files found in %s", dir)
-	}
-
 	sort.Slice(merged, func(i, j int) bool {
 		return merged[i].Days > merged[j].Days
 	})

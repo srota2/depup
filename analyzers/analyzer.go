@@ -60,10 +60,6 @@ func AnalyzeDeps(dir string, analyzer Analyzer) ([]DepAge, error) {
 		return nil, fmt.Errorf("cannot parse %s: %w", lockFile, err)
 	}
 
-	if len(currentDeps) == 0 {
-		return nil, fmt.Errorf("no dependencies found in %s", lockFile)
-	}
-
 	// 3. Walk git log for lock file changes
 	lastChanged := findLastChanged(repo, lockFile, currentDeps, analyzer)
 
